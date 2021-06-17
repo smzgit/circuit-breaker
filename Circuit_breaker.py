@@ -1,5 +1,4 @@
-import requests
-import time
+from abc import abstractmethod
 
 class circuit_breaker():
     current_state = "closed"
@@ -12,81 +11,46 @@ class circuit_breaker():
         print("Failure count: ",circuit_breaker.FAILURE_COUNT)
         print("Timeout: ",circuit_breaker.TIMEOUT_LIMIT)
 
-    def operation_healthcheck(self):
-        response = None
-        #response = requests.get('http://ilgss0385:8080/api/management/healthcheck')
-        print("\nCHECKING HEALTH...")
-        response = type('obj', (object,), {'status_code' : 0, 'text' : None})
-        try:
-            response = requests.get('http://ilgss0396:8080/',timeout=5)
-        except Exception as e:
-            print("Error in Checking Health => ",e)
-        return response
+    @abstractmethod
+    def operation(self):
+        '''Implement whatever operation your application
+        will perform and return any response to calling
+        function.'''
+        pass
 
+    @abstractmethod
     def closed(self):
-        if circuit_breaker.current_state == 'closed':
-            print('\n+++++++++++++++++++++++++++++++++++++++++++++')
-            print('\t\t\tSTATE : CLOSED', '\n')
-            failure_counter = 0
-            while (failure_counter < circuit_breaker.FAILURE_COUNT):
-                try:
-                    response = self.operation_healthcheck()
-                    resp = response.status_code
-                    print("\tStatus Code : ",response.status_code)
-                    with open("feature_flag.txt", 'w', encoding='utf-8') as f:
-                        f.write(str(response.status_code))
-                    if int(resp) == 200:
-                        circuit_breaker.current_state = "closed"
-                        print("response Status Code : ",resp)
-                        return
-                    else:
-                        print("Failure Counter => ", failure_counter, " & Threshold = ", circuit_breaker.FAILURE_COUNT)
-                        failure_counter += 1
-                except Exception as e:
-                    print(e)
-                    print("Failure Counter => ",failure_counter," & Threshold = ",circuit_breaker.FAILURE_COUNT)
-                    failure_counter += 1
-                time.sleep(2)
-            else:
-                print("Failure Counter exceeded -> going in Open state")
-                circuit_breaker.current_state = "open"
-                self.open_cb()
-        else:
-            raise Exception("Invoked wrong state :open, current_state = ", circuit_breaker.current_state)
+        '''Closed: The request from the application is routed to the operation.
+                    The proxy maintains a count of the number of recent failures, and if the
+                    call to the operation is unsuccessful the proxy increments this count.
+                    If the number of recent failures exceeds a specified threshold within a
+                    given time period, the proxy is placed into the Open state. At this point
+                    the proxy starts a timeout timer, and when this timer expires the proxy
+                    is placed into the Half-Open state.'''
+        pass
 
-
+    @abstractmethod
     def open_cb(self):
-        if circuit_breaker.current_state == 'open' :
-            print('\n+++++++++++++++++++++++++++++++++++++++++++++')
-            print('\t\t\tSTATE : OPEN', '\n')
-            circuit_breaker.current_state = "open"
-            print("Started a timeout for ",circuit_breaker.TIMEOUT_LIMIT," seconds\n")
-            time.sleep(circuit_breaker.TIMEOUT_LIMIT)
-            print("Now checking health again...")
-            circuit_breaker.current_state = 'half_open'
-            self.half_open()
-        else:
-            raise Exception("Invoked wrong state :open, current_state = ",circuit_breaker.current_state)
+        '''
+        Open: The request from the application fails immediately and
+              an exception is returned to the application.
+        '''
+        pass
 
+    @abstractmethod
     def half_open(self):
-        if circuit_breaker.current_state == 'half_open':
-            print('\n+++++++++++++++++++++++++++++++++++++++++++++')
-            print('\t\t\tSTATE : HALF-OPEN', '\n')
-            try:
-                response = self.operation_healthcheck()
-                if response.status_code in [200, 299]:
-                    circuit_breaker.current_state = "closed"
-                    self.closed()
-                else:
-                    circuit_breaker.current_state = "open"
-                    self.open_cb()
-            except Exception as e:
-                print(e)
-                circuit_breaker.current_state = "open"
-                self.open_cb()
+        '''Half-Open: A limited number of requests from the application are allowed to pass
+                     through and invoke the operation. If these requests are successful, it's assumed
+                     that the fault that was previously causing the failure has been fixed and the circuit
+                     breaker switches to the Closed state (the failure counter is reset). If any request
+                     fails, the circuit breaker assumes that the fault is still present so it reverts back
+                     to the Open state and restarts the timeout timer to give the system a further period
+                     of time to recover from the failure.
+                     The Half-Open state is useful to prevent a recovering service from suddenly being
+                     flooded with requests. As a service recovers, it might be able to support a limited
+                      volume of requests until the recovery is complete, but while recovery is in progress
+                       a flood of work can cause the service to time out or fail again.
 
-        else:
-            raise Exception("Invoked wrong state :half_open, current_state = ",circuit_breaker.current_state)
-
-cb= circuit_breaker(3,5)
-cb.closed()
+        '''
+        pass
+#____________________________________________________________________________________________________________
