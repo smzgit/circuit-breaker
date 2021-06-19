@@ -6,7 +6,6 @@ import requests
 class external_CB(circuit_breaker):
     def operation(self):
         response = None
-        # response = requests.get('http://ilgss0385:8080/api/management/healthcheck')
         print("\nCHECKING HEALTH...")
         response = type('obj', (object,), {'status_code': 0, 'text': None})
         try:
